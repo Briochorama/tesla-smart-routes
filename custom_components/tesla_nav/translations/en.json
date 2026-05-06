@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tesla Nav — Credentials",
+        "data": {
+          "client_id": "Client ID",
+          "client_secret": "Client Secret",
+          "refresh_token": "Refresh Token",
+          "proxy_url": "Proxy URL"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Only one Tesla Nav integration is allowed."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tesla Nav — Routes",
+        "menu_options": {
+          "add_route": "Add a route",
+          "remove_route": "Remove routes",
+          "finish": "Save and close"
+        }
+      },
+      "add_route": {
+        "title": "Add route",
+        "data": {
+          "name": "Route name (e.g. lundi_matin)",
+          "weekday": "Day of week",
+          "time": "Time (HH:MM)",
+          "waypoints": "Waypoints"
+        }
+      },
+      "remove_route": {
+        "title": "Remove routes",
+        "data": {
+          "routes": "Routes to remove"
+        }
+      }
+    }
+  }
+}

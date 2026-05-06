@@ -1,0 +1,10 @@
+{
+  "domain": "tesla_nav",
+  "name": "Tesla Nav",
+  "version": "0.1.0",
+  "config_flow": true,
+  "documentation": "",
+  "requirements": ["requests>=2.31.0"],
+  "codeowners": [],
+  "iot_class": "local_polling"
+}
