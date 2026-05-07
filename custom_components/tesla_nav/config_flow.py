@@ -5,6 +5,7 @@ from homeassistant import config_entries
 from homeassistant.config_entries import ConfigSubentryFlow
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
+    EntitySelector,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -21,6 +22,9 @@ from .const import (
     CONF_PROXY_URL,
     CONF_REFRESH_TOKEN,
     CONF_TIME,
+    CONF_VIN,
+    CONF_VIN_ENTITY,
+    CONF_VIN_SOURCE,
     CONF_WAYPOINTS,
     CONF_WEEKDAY,
     DEFAULT_PROXY_URL,
@@ -60,6 +64,23 @@ ROUTE_SCHEMA = vol.Schema(
         vol.Required(CONF_TIME): TimeSelector(),
     }
 )
+
+VIN_SOURCE_OPTIONS = [
+    {"value": "manual", "label": "Manual VIN"},
+    {"value": "entity", "label": "From HA entity"},
+]
+
+VIN_SOURCE_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_VIN_SOURCE, default="manual"): SelectSelector(
+            SelectSelectorConfig(options=VIN_SOURCE_OPTIONS, mode=SelectSelectorMode.LIST)
+        ),
+    }
+)
+
+VIN_MANUAL_SCHEMA = vol.Schema({vol.Required(CONF_VIN): str})
+
+VIN_ENTITY_SCHEMA = vol.Schema({vol.Required(CONF_VIN_ENTITY): EntitySelector()})
 
 # Create flow: add waypoints one by one with action choice
 WAYPOINT_ACTION_OPTIONS = [
@@ -138,8 +159,61 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
         if user_input is not None:
             self._route_data = user_input
             self._waypoints = []
-            return await self.async_step_add_waypoint()
+            return await self.async_step_vin_source()
         return self.async_show_form(step_id="user", data_schema=ROUTE_SCHEMA)
+
+    async def async_step_vin_source(self, user_input=None):
+        if user_input is not None:
+            self._route_data[CONF_VIN_SOURCE] = user_input[CONF_VIN_SOURCE]
+            if user_input[CONF_VIN_SOURCE] == "manual":
+                return await self.async_step_vin_manual()
+            return await self.async_step_vin_entity()
+        suggested = {CONF_VIN_SOURCE: self._route_data.get(CONF_VIN_SOURCE, "manual")}
+        return self.async_show_form(
+            step_id="vin_source",
+            data_schema=self.add_suggested_values_to_schema(VIN_SOURCE_SCHEMA, suggested),
+        )
+
+    async def async_step_vin_manual(self, user_input=None):
+        if user_input is not None:
+            self._route_data[CONF_VIN] = user_input[CONF_VIN].strip()
+            self._route_data.pop(CONF_VIN_ENTITY, None)
+            if self._is_reconfigure:
+                return self._save_vehicle()
+            return await self.async_step_add_waypoint()
+        suggested = {CONF_VIN: self._route_data.get(CONF_VIN, "")}
+        return self.async_show_form(
+            step_id="vin_manual",
+            data_schema=self.add_suggested_values_to_schema(VIN_MANUAL_SCHEMA, suggested),
+        )
+
+    async def async_step_vin_entity(self, user_input=None):
+        if user_input is not None:
+            self._route_data[CONF_VIN_ENTITY] = user_input[CONF_VIN_ENTITY]
+            self._route_data.pop(CONF_VIN, None)
+            if self._is_reconfigure:
+                return self._save_vehicle()
+            return await self.async_step_add_waypoint()
+        current = self._route_data.get(CONF_VIN_ENTITY)
+        schema = (
+            self.add_suggested_values_to_schema(VIN_ENTITY_SCHEMA, {CONF_VIN_ENTITY: current})
+            if current
+            else VIN_ENTITY_SCHEMA
+        )
+        return self.async_show_form(step_id="vin_entity", data_schema=schema)
+
+    def _save_vehicle(self):
+        subentry = self._get_reconfigure_subentry()
+        vin_keys = {CONF_VIN, CONF_VIN_ENTITY, CONF_VIN_SOURCE}
+        new_data = {k: v for k, v in subentry.data.items() if k not in vin_keys}
+        new_data[CONF_VIN_SOURCE] = self._route_data[CONF_VIN_SOURCE]
+        if self._route_data[CONF_VIN_SOURCE] == "manual":
+            new_data[CONF_VIN] = self._route_data[CONF_VIN]
+        else:
+            new_data[CONF_VIN_ENTITY] = self._route_data[CONF_VIN_ENTITY]
+        return self.async_update_reload_and_abort(
+            self._get_entry(), subentry, title=subentry.title, data=new_data,
+        )
 
     def _finish_waypoints(self):
         title = self._route_data[CONF_NAME]
@@ -185,10 +259,10 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
         self._is_reconfigure = True
         return self.async_show_menu(
             step_id="reconfigure",
-            menu_options=["edit_schedule", "edit_waypoints"],
+            menu_options=["edit_route", "edit_vehicle", "edit_waypoints"],
         )
 
-    async def async_step_edit_schedule(self, user_input=None):
+    async def async_step_edit_route(self, user_input=None):
         subentry = self._get_reconfigure_subentry()
         if user_input is not None:
             return self.async_update_reload_and_abort(
@@ -198,9 +272,23 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
                 data={**subentry.data, **user_input},
             )
         return self.async_show_form(
-            step_id="edit_schedule",
+            step_id="edit_route",
             data_schema=self.add_suggested_values_to_schema(ROUTE_SCHEMA, subentry.data),
         )
+
+    async def async_step_edit_vehicle(self, user_input=None):
+        subentry = self._get_reconfigure_subentry()
+        self._route_data = {
+            CONF_NAME: subentry.data[CONF_NAME],
+            CONF_WEEKDAY: subentry.data[CONF_WEEKDAY],
+            CONF_TIME: subentry.data[CONF_TIME],
+            CONF_VIN_SOURCE: subentry.data.get(CONF_VIN_SOURCE, "manual"),
+        }
+        if CONF_VIN in subentry.data:
+            self._route_data[CONF_VIN] = subentry.data[CONF_VIN]
+        if CONF_VIN_ENTITY in subentry.data:
+            self._route_data[CONF_VIN_ENTITY] = subentry.data[CONF_VIN_ENTITY]
+        return await self.async_step_vin_source()
 
     async def async_step_edit_waypoints(self, user_input=None):
         subentry = self._get_reconfigure_subentry()
@@ -208,7 +296,12 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
             CONF_NAME: subentry.data[CONF_NAME],
             CONF_WEEKDAY: subentry.data[CONF_WEEKDAY],
             CONF_TIME: subentry.data[CONF_TIME],
+            CONF_VIN_SOURCE: subentry.data.get(CONF_VIN_SOURCE, "manual"),
         }
+        if CONF_VIN in subentry.data:
+            self._route_data[CONF_VIN] = subentry.data[CONF_VIN]
+        if CONF_VIN_ENTITY in subentry.data:
+            self._route_data[CONF_VIN_ENTITY] = subentry.data[CONF_VIN_ENTITY]
         self._initial_maps_url = build_maps_url(subentry.data.get(CONF_WAYPOINTS, []))
         self._waypoints = list(subentry.data.get(CONF_WAYPOINTS, []))
         return await self.async_step_manage_waypoints()

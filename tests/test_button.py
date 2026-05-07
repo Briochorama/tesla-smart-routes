@@ -37,21 +37,29 @@ async def _add_route(
         (entry.entry_id, "route"),
         context={"source": config_entries.SOURCE_USER},
     )
+    flow_id = result["flow_id"]
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {"name": name, "weekday": weekday, "time": time},
+        flow_id, {"name": name, "weekday": weekday, "time": time},
+    )
+    assert result["step_id"] == "vin_source"
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id, {"vin_source": "manual"},
+    )
+    assert result["step_id"] == "vin_manual"
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id, {"vin": "XP7YGCES6RB264282"},
     )
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "add_waypoint"
 
     for wp in waypoints or []:
         result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"], {"label": wp["label"], "place_id": wp["place_id"], "action": "add_another"}
+            flow_id, {"label": wp["label"], "place_id": wp["place_id"], "action": "add_another"}
         )
         assert result["step_id"] == "add_waypoint"
 
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"label": "", "place_id": "", "action": "done"}
+        flow_id, {"label": "", "place_id": "", "action": "done"}
     )
     assert result["type"] == FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()

@@ -11,6 +11,9 @@ CONF_TIME = "time"
 CONF_WAYPOINTS = "waypoints"
 CONF_LABEL = "label"
 CONF_PLACE_ID = "place_id"
+CONF_VIN = "vin"
+CONF_VIN_SOURCE = "vin_source"
+CONF_VIN_ENTITY = "vin_entity"
 
 DEFAULT_PROXY_URL = "https://localhost:4443"
 

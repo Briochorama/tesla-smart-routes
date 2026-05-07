@@ -11,6 +11,8 @@ CREDENTIALS = {
     "proxy_url": "https://localhost:4443",
 }
 
+VIN_CHONK = "XP7YGCES6RB264282"
+
 
 async def _create_main_entry(hass: HomeAssistant):
     result = await hass.config_entries.flow.async_init(
@@ -23,14 +25,24 @@ async def _create_main_entry(hass: HomeAssistant):
 
 
 async def _init_route_flow(hass: HomeAssistant, entry):
+    """Init route flow through user → vin_source → vin_manual, return (result at add_waypoint, flow_id)."""
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, "route"),
         context={"source": config_entries.SOURCE_USER},
     )
-    return await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {"name": "lundi_matin", "weekday": ["monday"], "time": "07:30"},
-    ), result["flow_id"]
+    flow_id = result["flow_id"]
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id, {"name": "lundi_matin", "weekday": ["monday"], "time": "07:30"},
+    )
+    assert result["step_id"] == "vin_source"
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id, {"vin_source": "manual"},
+    )
+    assert result["step_id"] == "vin_manual"
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id, {"vin": VIN_CHONK},
+    )
+    return result, flow_id
 
 
 async def test_config_flow_shows_form(hass: HomeAssistant) -> None:
@@ -70,7 +82,6 @@ async def test_subentry_creates_route_no_waypoints(hass: HomeAssistant) -> None:
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "add_waypoint"
 
-    # Empty submit → finish regardless of action
     result = await hass.config_entries.subentries.async_configure(
         flow_id, {"label": "", "place_id": "", "action": "add_another"}
     )
@@ -79,6 +90,8 @@ async def test_subentry_creates_route_no_waypoints(hass: HomeAssistant) -> None:
 
     subentry = next(iter(entry.subentries.values()))
     assert subentry.data["waypoints"] == []
+    assert subentry.data["vin"] == VIN_CHONK
+    assert subentry.data["vin_source"] == "manual"
 
 
 async def test_subentry_creates_route_with_waypoints(hass: HomeAssistant) -> None:
@@ -132,11 +145,12 @@ async def test_reconfigure_shows_menu(hass: HomeAssistant) -> None:
     result = await _init_reconfigure_flow(hass, entry, subentry)
     assert result["type"] == FlowResultType.MENU
     assert result["step_id"] == "reconfigure"
-    assert "edit_schedule" in result["menu_options"]
+    assert "edit_route" in result["menu_options"]
+    assert "edit_vehicle" in result["menu_options"]
     assert "edit_waypoints" in result["menu_options"]
 
 
-async def test_reconfigure_edit_schedule_keeps_waypoints(hass: HomeAssistant) -> None:
+async def test_reconfigure_edit_route_keeps_waypoints(hass: HomeAssistant) -> None:
     entry = await _create_main_entry(hass)
     result, flow_id = await _init_route_flow(hass, entry)
     await hass.config_entries.subentries.async_configure(
@@ -147,10 +161,10 @@ async def test_reconfigure_edit_schedule_keeps_waypoints(hass: HomeAssistant) ->
 
     result = await _init_reconfigure_flow(hass, entry, subentry)
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"next_step_id": "edit_schedule"}
+        result["flow_id"], {"next_step_id": "edit_route"}
     )
     assert result["type"] == FlowResultType.FORM
-    assert result["step_id"] == "edit_schedule"
+    assert result["step_id"] == "edit_route"
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {"name": "lundi_soir", "weekday": ["friday"], "time": "18:00"}
@@ -161,7 +175,39 @@ async def test_reconfigure_edit_schedule_keeps_waypoints(hass: HomeAssistant) ->
     assert subentry.data["name"] == "lundi_soir"
     assert subentry.data["weekday"] == ["friday"]
     assert subentry.data["time"] == "18:00"
+    assert subentry.data["vin"] == VIN_CHONK
     assert subentry.data["waypoints"] == [{"label": "Stop A", "place_id": "ChIJAAA"}]
+
+
+async def test_reconfigure_edit_vehicle_manual(hass: HomeAssistant) -> None:
+    entry = await _create_main_entry(hass)
+    result, flow_id = await _init_route_flow(hass, entry)
+    await hass.config_entries.subentries.async_configure(
+        flow_id, {"label": "", "place_id": "", "action": "done"}
+    )
+    await hass.async_block_till_done()
+    subentry = next(iter(entry.subentries.values()))
+
+    result = await _init_reconfigure_flow(hass, entry, subentry)
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "edit_vehicle"}
+    )
+    assert result["step_id"] == "vin_source"
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"vin_source": "manual"}
+    )
+    assert result["step_id"] == "vin_manual"
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"vin": "LRW3E7FSXPC660715"}
+    )
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+
+    assert subentry.data["vin"] == "LRW3E7FSXPC660715"
+    assert subentry.data["vin_source"] == "manual"
+    assert subentry.data["waypoints"] == []
 
 
 async def _enter_manage_waypoints(hass, entry, subentry):
@@ -185,7 +231,6 @@ async def test_manage_waypoints_shows_existing(hass: HomeAssistant) -> None:
     result = await _enter_manage_waypoints(hass, entry, subentry)
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "manage_waypoints"
-    # waypoint_index lives in select_waypoint now, not here
     assert "waypoint_index" not in result["data_schema"].schema
 
 
@@ -199,7 +244,6 @@ async def test_manage_waypoints_add_new(hass: HomeAssistant) -> None:
     subentry = next(iter(entry.subentries.values()))
 
     result = await _enter_manage_waypoints(hass, entry, subentry)
-    # No waypoints — waypoint_index field should not be present
     assert "waypoint_index" not in result["data_schema"].schema
 
     result = await hass.config_entries.subentries.async_configure(
