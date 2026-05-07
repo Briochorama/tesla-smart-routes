@@ -1,36 +1,88 @@
-import pytest
+from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.tesla_nav.const import CONF_ROUTES, DOMAIN
+from custom_components.tesla_nav.const import DOMAIN
+
+CREDENTIALS = {
+    "client_id": "cid",
+    "client_secret": "csec",
+    "refresh_token": "rtok",
+    "proxy_url": "https://localhost:4443",
+}
 
 
-async def _setup_entry(hass: HomeAssistant, routes=None) -> MockConfigEntry:
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            "client_id": "cid",
-            "client_secret": "csec",
-            "refresh_token": "rtok",
-            "proxy_url": "https://localhost:4443",
-        },
-        options={CONF_ROUTES: routes or []},
+async def _create_main_entry(hass: HomeAssistant):
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(entry.entry_id)
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], CREDENTIALS)
+    assert result["type"] == FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
-    return entry
+    return hass.config_entries.async_entries(DOMAIN)[0]
+
+
+async def _add_route(
+    hass: HomeAssistant,
+    entry,
+    name: str,
+    weekday: list | None = None,
+    time: str = "07:30",
+    waypoints: list | None = None,
+):
+    if weekday is None:
+        weekday = ["monday"]
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, "route"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {"name": name, "weekday": weekday, "time": time},
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "add_waypoint"
+
+    for wp in waypoints or []:
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {"label": wp["label"], "place_id": wp["place_id"]}
+        )
+        assert result["step_id"] == "add_waypoint"
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"label": "", "place_id": ""}
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_no_routes_no_buttons(hass: HomeAssistant) -> None:
+    entry = await _create_main_entry(hass)
+    registry = er.async_get(hass)
+    entities = er.async_entries_for_config_entry(registry, entry.entry_id)
+    assert entities == []
+
+
+async def test_button_appears_after_subentry_added(hass: HomeAssistant) -> None:
+    entry = await _create_main_entry(hass)
+    registry = er.async_get(hass)
+    assert len(er.async_entries_for_config_entry(registry, entry.entry_id)) == 0
+
+    await _add_route(hass, entry, "lundi_matin")
+
+    entities = er.async_entries_for_config_entry(registry, entry.entry_id)
+    assert len(entities) == 1
+    assert entities[0].original_name == "lundi_matin"
 
 
 async def test_button_created_per_route(hass: HomeAssistant) -> None:
-    routes = [
-        {"name": "lundi_matin", "weekday": "monday", "time": "07:30",
-         "waypoints": [{"label": "École", "place_id": "ChIJXXX"}]},
-        {"name": "lundi_soir", "weekday": "monday", "time": "16:00",
-         "waypoints": [{"label": "Maison", "place_id": "ChIJYYY"}]},
-    ]
-    entry = await _setup_entry(hass, routes)
+    entry = await _create_main_entry(hass)
+    await _add_route(hass, entry, "lundi_matin")
+    await _add_route(hass, entry, "lundi_soir", time="16:00")
+
     registry = er.async_get(hass)
     entities = er.async_entries_for_config_entry(registry, entry.entry_id)
     assert len(entities) == 2
@@ -40,52 +92,16 @@ async def test_button_created_per_route(hass: HomeAssistant) -> None:
 
 
 async def test_button_press_logs(hass: HomeAssistant, caplog) -> None:
-    routes = [
-        {"name": "lundi_matin", "weekday": "monday", "time": "07:30",
-         "waypoints": [{"label": "École", "place_id": "ChIJXXX"}]},
-    ]
-    await _setup_entry(hass, routes)
+    entry = await _create_main_entry(hass)
+    await _add_route(hass, entry, "lundi_matin")
+
+    registry = er.async_get(hass)
+    entities = er.async_entries_for_config_entry(registry, entry.entry_id)
+    entity_id = entities[0].entity_id
+
     await hass.services.async_call(
         "button", "press",
-        {"entity_id": "button.lundi_matin"},
+        {"entity_id": entity_id},
         blocking=True,
     )
     assert "lundi_matin" in caplog.text
-
-
-async def test_no_routes_no_buttons(hass: HomeAssistant) -> None:
-    entry = await _setup_entry(hass, routes=[])
-    registry = er.async_get(hass)
-    entities = er.async_entries_for_config_entry(registry, entry.entry_id)
-    assert entities == []
-
-
-async def test_buttons_reload_after_options_change(hass: HomeAssistant) -> None:
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={"client_id": "cid", "client_secret": "csec",
-              "refresh_token": "rtok", "proxy_url": "https://localhost:4443"},
-        options={CONF_ROUTES: [
-            {"name": "lundi_matin", "weekday": "monday", "time": "07:30",
-             "waypoints": [{"label": "École", "place_id": "ChIJXXX"}]},
-        ]},
-    )
-    entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
-
-    registry = er.async_get(hass)
-    assert len(er.async_entries_for_config_entry(registry, entry.entry_id)) == 1
-
-    hass.config_entries.async_update_entry(
-        entry,
-        options={CONF_ROUTES: [
-            {"name": "lundi_matin", "weekday": "monday", "time": "07:30",
-             "waypoints": [{"label": "École", "place_id": "ChIJXXX"}]},
-            {"name": "lundi_soir", "weekday": "monday", "time": "16:00",
-             "waypoints": [{"label": "Maison", "place_id": "ChIJYYY"}]},
-        ]},
-    )
-    await hass.async_block_till_done()
-
-    assert len(er.async_entries_for_config_entry(registry, entry.entry_id)) == 2

@@ -3,6 +3,7 @@
   "name": "Tesla Nav",
   "version": "0.1.0",
   "config_flow": true,
+  "single_config_entry": true,
   "documentation": "",
   "requirements": ["requests>=2.31.0"],
   "codeowners": [],

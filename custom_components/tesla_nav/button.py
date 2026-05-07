@@ -7,7 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_ROUTES, DOMAIN
+from .const import CONF_NAME, CONF_TIME, CONF_WAYPOINTS, CONF_WEEKDAY, SUBENTRY_TYPE_ROUTE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,31 +17,32 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    routes = entry.options.get(CONF_ROUTES, [])
-    async_add_entities(TeslaRouteButton(entry, route) for route in routes)
+    async_add_entities(
+        TeslaRouteButton(entry, subentry)
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_ROUTE
+    )
 
 
 class TeslaRouteButton(ButtonEntity):
-    _attr_has_entity_name = True
-
-    def __init__(self, entry: ConfigEntry, route: dict) -> None:
+    def __init__(self, entry: ConfigEntry, subentry) -> None:
         self._entry = entry
-        self._route = route
-        self._attr_unique_id = f"{entry.entry_id}_{route['name']}"
-        self._attr_name = route["name"]
+        self._subentry = subentry
+        self._attr_unique_id = subentry.subentry_id
+        self._attr_name = subentry.data[CONF_NAME]
 
     @property
     def extra_state_attributes(self) -> dict:
         return {
-            "weekday": self._route["weekday"],
-            "time": self._route["time"],
-            "waypoints_count": len(self._route["waypoints"]),
+            "weekdays": self._subentry.data[CONF_WEEKDAY],
+            "time": self._subentry.data[CONF_TIME],
+            "waypoints_count": len(self._subentry.data.get(CONF_WAYPOINTS, [])),
         }
 
     async def async_press(self) -> None:
         _LOGGER.info(
             "[tesla_nav] Would send route '%s' (%s %s) — proxy not wired yet",
-            self._route["name"],
-            self._route["weekday"],
-            self._route["time"],
+            self._subentry.data[CONF_NAME],
+            self._subentry.data[CONF_WEEKDAY],
+            self._subentry.data[CONF_TIME],
         )

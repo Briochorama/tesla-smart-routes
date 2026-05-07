@@ -1,10 +1,36 @@
-import pytest
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.tesla_nav.const import CONF_ROUTES, DOMAIN
+from custom_components.tesla_nav.const import DOMAIN
+
+CREDENTIALS = {
+    "client_id": "test_client_id",
+    "client_secret": "test_secret",
+    "refresh_token": "test_refresh",
+    "proxy_url": "https://localhost:4443",
+}
+
+
+async def _create_main_entry(hass: HomeAssistant):
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], CREDENTIALS)
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    return hass.config_entries.async_entries(DOMAIN)[0]
+
+
+async def _init_route_flow(hass: HomeAssistant, entry):
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, "route"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    return await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {"name": "lundi_matin", "weekday": ["monday"], "time": "07:30"},
+    ), result["flow_id"]
 
 
 async def test_config_flow_shows_form(hass: HomeAssistant) -> None:
@@ -21,15 +47,7 @@ async def test_config_flow_creates_entry(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {
-            "client_id": "test_client_id",
-            "client_secret": "test_secret",
-            "refresh_token": "test_refresh",
-            "proxy_url": "https://localhost:4443",
-        },
-    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], CREDENTIALS)
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["title"] == "Tesla Nav"
     assert result["data"]["client_id"] == "test_client_id"
@@ -37,18 +55,7 @@ async def test_config_flow_creates_entry(hass: HomeAssistant) -> None:
 
 
 async def test_config_flow_only_one_entry(hass: HomeAssistant) -> None:
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-    await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {
-            "client_id": "cid",
-            "client_secret": "csec",
-            "refresh_token": "rtok",
-            "proxy_url": "https://localhost:4443",
-        },
-    )
+    await _create_main_entry(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -56,88 +63,56 @@ async def test_config_flow_only_one_entry(hass: HomeAssistant) -> None:
     assert result["reason"] == "single_instance_allowed"
 
 
-async def _create_entry(hass: HomeAssistant):
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": "user"}
-    )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {"client_id": "cid", "client_secret": "csec",
-         "refresh_token": "rtok", "proxy_url": "https://localhost:4443"},
-    )
-    return hass.config_entries.async_entries(DOMAIN)[0]
+async def test_subentry_creates_route_no_waypoints(hass: HomeAssistant) -> None:
+    entry = await _create_main_entry(hass)
+    result, flow_id = await _init_route_flow(hass, entry)
 
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "add_waypoint"
 
-async def test_options_add_route(hass: HomeAssistant) -> None:
-    entry = await _create_entry(hass)
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["type"] == FlowResultType.MENU
-
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"next_step_id": "add_route"}
-    )
-    assert result["step_id"] == "add_route"
-
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        {
-            "name": "lundi_matin",
-            "weekday": "monday",
-            "time": "07:30",
-            "waypoints": "École | ChIJPceHK8L1ikcRs_TCr4OFP3I\nTravail | ChIJjxxNp05fikcR3DlfSF8bxso",
-        },
-    )
-    assert result["type"] == FlowResultType.MENU
-
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"next_step_id": "finish"}
+    # Empty submit → finish
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id, {"label": "", "place_id": ""}
     )
     assert result["type"] == FlowResultType.CREATE_ENTRY
-    routes = result["data"][CONF_ROUTES]
-    assert len(routes) == 1
-    assert routes[0]["name"] == "lundi_matin"
-    assert routes[0]["weekday"] == "monday"
-    assert routes[0]["waypoints"][0] == {"label": "École", "place_id": "ChIJPceHK8L1ikcRs_TCr4OFP3I"}
-    assert routes[0]["waypoints"][1] == {"label": "Travail", "place_id": "ChIJjxxNp05fikcR3DlfSF8bxso"}
+    assert result["title"] == "lundi_matin"
+
+    subentry = next(iter(entry.subentries.values()))
+    assert subentry.data["waypoints"] == []
 
 
-async def test_options_remove_route(hass: HomeAssistant) -> None:
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={"client_id": "cid", "client_secret": "csec",
-              "refresh_token": "rtok", "proxy_url": "https://localhost:4443"},
-        options={CONF_ROUTES: [
-            {"name": "lundi_matin", "weekday": "monday", "time": "07:30", "waypoints": []},
-            {"name": "lundi_soir", "weekday": "monday", "time": "16:00", "waypoints": []},
-        ]},
-    )
-    entry.add_to_hass(hass)
+async def test_subentry_creates_route_with_waypoints(hass: HomeAssistant) -> None:
+    entry = await _create_main_entry(hass)
+    result, flow_id = await _init_route_flow(hass, entry)
 
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"next_step_id": "remove_route"}
-    )
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"routes": ["lundi_matin"]}
-    )
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"next_step_id": "finish"}
-    )
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    routes = result["data"][CONF_ROUTES]
-    assert len(routes) == 1
-    assert routes[0]["name"] == "lundi_soir"
-
-
-async def test_options_invalid_waypoints(hass: HomeAssistant) -> None:
-    entry = await _create_entry(hass)
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"next_step_id": "add_route"}
-    )
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        {"name": "test", "weekday": "monday", "time": "07:30", "waypoints": "no pipe separator here"},
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id, {"label": "École", "place_id": "ChIJXXX"}
     )
     assert result["type"] == FlowResultType.FORM
-    assert result["errors"] == {"waypoints": "invalid_waypoints"}
+    assert result["step_id"] == "add_waypoint"
+
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id, {"label": "Travail", "place_id": "ChIJYYY"}
+    )
+    assert result["step_id"] == "add_waypoint"
+
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id, {"label": "", "place_id": ""}
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+
+    subentry = next(iter(entry.subentries.values()))
+    assert len(subentry.data["waypoints"]) == 2
+    assert subentry.data["waypoints"][0] == {"label": "École", "place_id": "ChIJXXX"}
+    assert subentry.data["waypoints"][1] == {"label": "Travail", "place_id": "ChIJYYY"}
+
+
+async def test_subentry_waypoint_incomplete_error(hass: HomeAssistant) -> None:
+    entry = await _create_main_entry(hass)
+    result, flow_id = await _init_route_flow(hass, entry)
+
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id, {"label": "École", "place_id": ""}
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"] == {"base": "waypoint_incomplete"}

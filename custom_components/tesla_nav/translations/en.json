@@ -15,31 +15,38 @@
       "single_instance_allowed": "Only one Tesla Nav integration is allowed."
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Tesla Nav — Routes",
-        "menu_options": {
-          "add_route": "Add a route",
-          "remove_route": "Remove routes",
-          "finish": "Save and close"
+  "config_subentries": {
+    "route": {
+      "entry_type": "Tesla route",
+      "initiate_flow": {
+        "user": "Add route"
+      },
+      "create_entry": {
+        "default": "Route \"{name}\" was added successfully."
+      },
+      "step": {
+        "user": {
+          "title": "Add route",
+          "description": "Configure the route schedule.",
+          "data": {
+            "name": "Route name",
+            "weekday": "Days of week",
+            "time": "Time (HH:MM)"
+          }
+        },
+        "add_waypoint": {
+          "title": "Add waypoints",
+          "description": "Waypoints added so far:\n{waypoints}\n\nLeave both fields empty and submit to finish.",
+          "data": {
+            "label": "Label",
+            "place_id": "Place ID"
+          }
         }
       },
-      "add_route": {
-        "title": "Add route",
-        "data": {
-          "name": "Route name (e.g. lundi_matin)",
-          "weekday": "Day of week",
-          "time": "Time (HH:MM)",
-          "waypoints": "Waypoints"
-        }
+      "error": {
+        "waypoint_incomplete": "Both label and Place ID are required. Leave both empty to finish."
       },
-      "remove_route": {
-        "title": "Remove routes",
-        "data": {
-          "routes": "Routes to remove"
-        }
-      }
+      "abort": {}
     }
   }
 }

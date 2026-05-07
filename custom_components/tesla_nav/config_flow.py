@@ -2,16 +2,28 @@ from __future__ import annotations
 
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigSubentryFlow
 from homeassistant.core import callback
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .const import (
     CONF_CLIENT_ID,
     CONF_CLIENT_SECRET,
+    CONF_LABEL,
+    CONF_NAME,
+    CONF_PLACE_ID,
     CONF_PROXY_URL,
     CONF_REFRESH_TOKEN,
-    CONF_ROUTES,
+    CONF_TIME,
+    CONF_WAYPOINTS,
+    CONF_WEEKDAY,
     DEFAULT_PROXY_URL,
     DOMAIN,
+    SUBENTRY_TYPE_ROUTE,
 )
 
 USER_SCHEMA = vol.Schema(
@@ -20,6 +32,37 @@ USER_SCHEMA = vol.Schema(
         vol.Required(CONF_CLIENT_SECRET): str,
         vol.Required(CONF_REFRESH_TOKEN): str,
         vol.Optional(CONF_PROXY_URL, default=DEFAULT_PROXY_URL): str,
+    }
+)
+
+WEEKDAY_OPTIONS = [
+    {"value": "monday", "label": "Monday"},
+    {"value": "tuesday", "label": "Tuesday"},
+    {"value": "wednesday", "label": "Wednesday"},
+    {"value": "thursday", "label": "Thursday"},
+    {"value": "friday", "label": "Friday"},
+    {"value": "saturday", "label": "Saturday"},
+    {"value": "sunday", "label": "Sunday"},
+]
+
+ROUTE_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_NAME): str,
+        vol.Required(CONF_WEEKDAY): SelectSelector(
+            SelectSelectorConfig(
+                options=WEEKDAY_OPTIONS,
+                multiple=True,
+                mode=SelectSelectorMode.LIST,
+            )
+        ),
+        vol.Required(CONF_TIME): str,
+    }
+)
+
+WAYPOINT_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_LABEL, default=""): str,
+        vol.Optional(CONF_PLACE_ID, default=""): str,
     }
 )
 
@@ -36,87 +79,47 @@ class TeslaNavConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(step_id="user", data_schema=USER_SCHEMA)
 
-    @staticmethod
+    @classmethod
     @callback
-    def async_get_options_flow(config_entry):
-        return TeslaNavOptionsFlow(config_entry)
+    def async_get_supported_subentry_types(cls, config_entry) -> dict[str, type[ConfigSubentryFlow]]:
+        return {SUBENTRY_TYPE_ROUTE: TeslaNavRouteSubentryFlow}
 
 
-class TeslaNavOptionsFlow(config_entries.OptionsFlow):
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self._routes: list[dict] = list(config_entry.options.get(CONF_ROUTES, []))
+class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
+    def __init__(self) -> None:
+        self._route_data: dict = {}
+        self._waypoints: list[dict] = []
 
-    async def async_step_init(self, user_input=None):
-        return self.async_show_menu(
-            step_id="init",
-            menu_options=["add_route", "remove_route", "finish"],
-        )
+    async def async_step_user(self, user_input=None):
+        if user_input is not None:
+            self._route_data = user_input
+            self._waypoints = []
+            return await self.async_step_add_waypoint()
+        return self.async_show_form(step_id="user", data_schema=ROUTE_SCHEMA)
 
-    async def async_step_add_route(self, user_input=None):
+    async def async_step_add_waypoint(self, user_input=None):
         errors = {}
         if user_input is not None:
-            waypoints = _parse_waypoints(user_input["waypoints"])
-            if not waypoints:
-                errors["waypoints"] = "invalid_waypoints"
-            else:
-                self._routes.append(
-                    {
-                        "name": user_input["name"],
-                        "weekday": user_input["weekday"],
-                        "time": user_input["time"],
-                        "waypoints": waypoints,
-                    }
-                )
-                return await self.async_step_init()
+            label = user_input.get(CONF_LABEL, "").strip()
+            place_id = user_input.get(CONF_PLACE_ID, "").strip()
 
+            if not label and not place_id:
+                return self.async_create_entry(
+                    title=self._route_data[CONF_NAME],
+                    data={**self._route_data, CONF_WAYPOINTS: self._waypoints},
+                )
+            elif label and place_id:
+                self._waypoints.append({"label": label, "place_id": place_id})
+                return await self.async_step_add_waypoint()
+            else:
+                errors["base"] = "waypoint_incomplete"
+
+        added = "\n".join(f"• {w['label']} ({w['place_id']})" for w in self._waypoints)
         return self.async_show_form(
-            step_id="add_route",
-            data_schema=vol.Schema(
-                {
-                    vol.Required("name"): str,
-                    vol.Required("weekday"): vol.In(
-                        ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-                    ),
-                    vol.Required("time"): str,
-                    vol.Required("waypoints"): str,
-                }
-            ),
+            step_id="add_waypoint",
+            data_schema=WAYPOINT_SCHEMA,
             description_placeholders={
-                "waypoints_help": "One per line: Label | ChIJxxxxxxx"
+                "waypoints": added or "None yet — leave both fields empty to finish.",
             },
             errors=errors,
         )
-
-    async def async_step_remove_route(self, user_input=None):
-        if not self._routes:
-            return await self.async_step_init()
-
-        if user_input is not None:
-            names_to_remove = set(user_input.get("routes", []))
-            self._routes = [r for r in self._routes if r["name"] not in names_to_remove]
-            return await self.async_step_init()
-
-        return self.async_show_form(
-            step_id="remove_route",
-            data_schema=vol.Schema(
-                {
-                    vol.Required("routes"): vol.All(
-                        [vol.In([r["name"] for r in self._routes])],
-                    )
-                }
-            ),
-        )
-
-    async def async_step_finish(self, user_input=None):
-        return self.async_create_entry(data={CONF_ROUTES: self._routes})
-
-
-def _parse_waypoints(text: str) -> list[dict]:
-    result = []
-    for line in text.strip().splitlines():
-        if "|" in line:
-            label, place_id = line.split("|", 1)
-            label, place_id = label.strip(), place_id.strip()
-            if label and place_id:
-                result.append({"label": label, "place_id": place_id})
-    return result
