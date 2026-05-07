@@ -8,8 +8,10 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TimeSelector,
 )
 
+from .helpers import build_maps_url
 from .const import (
     CONF_CLIENT_ID,
     CONF_CLIENT_SECRET,
@@ -55,10 +57,11 @@ ROUTE_SCHEMA = vol.Schema(
                 mode=SelectSelectorMode.LIST,
             )
         ),
-        vol.Required(CONF_TIME): str,
+        vol.Required(CONF_TIME): TimeSelector(),
     }
 )
 
+# Create flow: add waypoints one by one with action choice
 WAYPOINT_ACTION_OPTIONS = [
     {"value": "add_another", "label": "Add another waypoint"},
     {"value": "done", "label": "Done — create route"},
@@ -76,6 +79,27 @@ WAYPOINT_SCHEMA = vol.Schema(
         ),
     }
 )
+
+# Manage flow: single waypoint entry (no action selector)
+SINGLE_WAYPOINT_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_LABEL, default=""): str,
+        vol.Optional(CONF_PLACE_ID, default=""): str,
+    }
+)
+
+# Manage flow: action options (built dynamically based on whether waypoints exist)
+MANAGE_ACTION_BASE = [
+    {"value": "add_new", "label": "Add new waypoint"},
+    {"value": "done", "label": "Done"},
+]
+
+MANAGE_ACTION_FULL = [
+    {"value": "add_new", "label": "Add new waypoint"},
+    {"value": "edit_selected", "label": "Edit selected"},
+    {"value": "delete_selected", "label": "Delete selected"},
+    {"value": "done", "label": "Done"},
+]
 
 
 class TeslaNavConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -100,6 +124,11 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
     def __init__(self) -> None:
         self._route_data: dict = {}
         self._waypoints: list[dict] = []
+        self._is_reconfigure: bool = False
+        self._initial_maps_url: str | None = None
+        self._editing_index: int | None = None
+
+    # ------------------------------------------------------------------ create
 
     async def async_step_user(self, user_input=None):
         if user_input is not None:
@@ -107,6 +136,15 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
             self._waypoints = []
             return await self.async_step_add_waypoint()
         return self.async_show_form(step_id="user", data_schema=ROUTE_SCHEMA)
+
+    def _finish_waypoints(self):
+        title = self._route_data[CONF_NAME]
+        data = {**self._route_data, CONF_WAYPOINTS: self._waypoints}
+        if self._is_reconfigure:
+            entry = self._get_entry()
+            subentry = self._get_reconfigure_subentry()
+            return self.async_update_reload_and_abort(entry, subentry, title=title, data=data)
+        return self.async_create_entry(title=title, data=data)
 
     async def async_step_add_waypoint(self, user_input=None):
         errors = {}
@@ -116,27 +154,144 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
             action = user_input.get("action", "done")
 
             if not label and not place_id:
-                return self.async_create_entry(
-                    title=self._route_data[CONF_NAME],
-                    data={**self._route_data, CONF_WAYPOINTS: self._waypoints},
-                )
+                return self._finish_waypoints()
             elif label and place_id:
                 self._waypoints.append({"label": label, "place_id": place_id})
                 if action == "add_another":
                     return await self.async_step_add_waypoint()
-                return self.async_create_entry(
-                    title=self._route_data[CONF_NAME],
-                    data={**self._route_data, CONF_WAYPOINTS: self._waypoints},
-                )
+                return self._finish_waypoints()
             else:
                 errors["base"] = "waypoint_incomplete"
 
         added = "\n".join(f"• {w['label']} ({w['place_id']})" for w in self._waypoints)
+        maps_url_line = f"\n[View current route]({self._initial_maps_url})" if self._initial_maps_url else ""
         return self.async_show_form(
             step_id="add_waypoint",
             data_schema=WAYPOINT_SCHEMA,
             description_placeholders={
                 "waypoints": added or "None yet.",
+                "maps_url": maps_url_line,
             },
+            errors=errors,
+        )
+
+    # --------------------------------------------------------------- reconfigure
+
+    async def async_step_reconfigure(self, user_input=None):
+        self._is_reconfigure = True
+        return self.async_show_menu(
+            step_id="reconfigure",
+            menu_options=["edit_schedule", "edit_waypoints"],
+        )
+
+    async def async_step_edit_schedule(self, user_input=None):
+        subentry = self._get_reconfigure_subentry()
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                self._get_entry(),
+                subentry,
+                title=user_input[CONF_NAME],
+                data={**subentry.data, **user_input},
+            )
+        return self.async_show_form(
+            step_id="edit_schedule",
+            data_schema=self.add_suggested_values_to_schema(ROUTE_SCHEMA, subentry.data),
+        )
+
+    async def async_step_edit_waypoints(self, user_input=None):
+        subentry = self._get_reconfigure_subentry()
+        self._route_data = {
+            CONF_NAME: subentry.data[CONF_NAME],
+            CONF_WEEKDAY: subentry.data[CONF_WEEKDAY],
+            CONF_TIME: subentry.data[CONF_TIME],
+        }
+        self._initial_maps_url = build_maps_url(subentry.data.get(CONF_WAYPOINTS, []))
+        self._waypoints = list(subentry.data.get(CONF_WAYPOINTS, []))
+        return await self.async_step_manage_waypoints()
+
+    async def async_step_manage_waypoints(self, user_input=None):
+        errors = {}
+        has_waypoints = bool(self._waypoints)
+
+        if user_input is not None:
+            action = user_input.get("waypoint_action")
+            index_str = user_input.get("waypoint_index")
+
+            if action == "done":
+                return self._finish_waypoints()
+
+            if action == "add_new":
+                return await self.async_step_add_single_waypoint()
+
+            if action in ("edit_selected", "delete_selected"):
+                if index_str is None:
+                    errors["base"] = "waypoint_not_selected"
+                else:
+                    index = int(index_str)
+                    if action == "delete_selected":
+                        self._waypoints.pop(index)
+                        return await self.async_step_manage_waypoints()
+                    else:
+                        self._editing_index = index
+                        return await self.async_step_edit_waypoint()
+
+        action_options = MANAGE_ACTION_FULL if has_waypoints else MANAGE_ACTION_BASE
+        schema: dict = {
+            vol.Required("waypoint_action"): SelectSelector(
+                SelectSelectorConfig(options=action_options, mode=SelectSelectorMode.LIST)
+            ),
+        }
+        if has_waypoints:
+            wp_options = [
+                {"value": str(i), "label": f"{w['label']} ({w['place_id']})"}
+                for i, w in enumerate(self._waypoints)
+            ]
+            schema[vol.Optional("waypoint_index")] = SelectSelector(
+                SelectSelectorConfig(options=wp_options, mode=SelectSelectorMode.DROPDOWN)
+            )
+
+        maps_url_line = f"\n[View current route]({self._initial_maps_url})" if self._initial_maps_url else ""
+        added = "\n".join(f"• {w['label']} ({w['place_id']})" for w in self._waypoints)
+        return self.async_show_form(
+            step_id="manage_waypoints",
+            data_schema=vol.Schema(schema),
+            description_placeholders={
+                "waypoints": added or "None.",
+                "maps_url": maps_url_line,
+            },
+            errors=errors,
+        )
+
+    async def async_step_add_single_waypoint(self, user_input=None):
+        errors = {}
+        if user_input is not None:
+            label = user_input.get(CONF_LABEL, "").strip()
+            place_id = user_input.get(CONF_PLACE_ID, "").strip()
+            if label and place_id:
+                self._waypoints.append({"label": label, "place_id": place_id})
+                return await self.async_step_manage_waypoints()
+            errors["base"] = "waypoint_incomplete"
+
+        return self.async_show_form(
+            step_id="add_single_waypoint",
+            data_schema=SINGLE_WAYPOINT_SCHEMA,
+            errors=errors,
+        )
+
+    async def async_step_edit_waypoint(self, user_input=None):
+        errors = {}
+        if user_input is not None:
+            label = user_input.get(CONF_LABEL, "").strip()
+            place_id = user_input.get(CONF_PLACE_ID, "").strip()
+            if label and place_id:
+                self._waypoints[self._editing_index] = {"label": label, "place_id": place_id}
+                self._editing_index = None
+                return await self.async_step_manage_waypoints()
+            errors["base"] = "waypoint_incomplete"
+
+        current = self._waypoints[self._editing_index]
+        return self.async_show_form(
+            step_id="edit_waypoint",
+            data_schema=self.add_suggested_values_to_schema(SINGLE_WAYPOINT_SCHEMA, current),
             errors=errors,
         )
