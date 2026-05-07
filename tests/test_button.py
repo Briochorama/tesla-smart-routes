@@ -46,12 +46,12 @@ async def _add_route(
 
     for wp in waypoints or []:
         result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"], {"label": wp["label"], "place_id": wp["place_id"]}
+            result["flow_id"], {"label": wp["label"], "place_id": wp["place_id"], "action": "add_another"}
         )
         assert result["step_id"] == "add_waypoint"
 
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"label": "", "place_id": ""}
+        result["flow_id"], {"label": "", "place_id": "", "action": "done"}
     )
     assert result["type"] == FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()

@@ -22,7 +22,7 @@
         "user": "Add route"
       },
       "create_entry": {
-        "default": "Route \"{name}\" was added successfully."
+        "default": "Route added successfully."
       },
       "step": {
         "user": {
@@ -36,10 +36,11 @@
         },
         "add_waypoint": {
           "title": "Add waypoints",
-          "description": "Waypoints added so far:\n{waypoints}\n\nLeave both fields empty and submit to finish.",
+          "description": "Waypoints added so far:\n{waypoints}\n\nLeave label and Place ID empty to finish without adding another.",
           "data": {
             "label": "Label",
-            "place_id": "Place ID"
+            "place_id": "Place ID",
+            "action": "Then"
           }
         }
       },

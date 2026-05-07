@@ -70,9 +70,9 @@ async def test_subentry_creates_route_no_waypoints(hass: HomeAssistant) -> None:
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "add_waypoint"
 
-    # Empty submit → finish
+    # Empty submit → finish regardless of action
     result = await hass.config_entries.subentries.async_configure(
-        flow_id, {"label": "", "place_id": ""}
+        flow_id, {"label": "", "place_id": "", "action": "add_another"}
     )
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["title"] == "lundi_matin"
@@ -86,18 +86,13 @@ async def test_subentry_creates_route_with_waypoints(hass: HomeAssistant) -> Non
     result, flow_id = await _init_route_flow(hass, entry)
 
     result = await hass.config_entries.subentries.async_configure(
-        flow_id, {"label": "École", "place_id": "ChIJXXX"}
+        flow_id, {"label": "École", "place_id": "ChIJXXX", "action": "add_another"}
     )
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "add_waypoint"
 
     result = await hass.config_entries.subentries.async_configure(
-        flow_id, {"label": "Travail", "place_id": "ChIJYYY"}
-    )
-    assert result["step_id"] == "add_waypoint"
-
-    result = await hass.config_entries.subentries.async_configure(
-        flow_id, {"label": "", "place_id": ""}
+        flow_id, {"label": "Travail", "place_id": "ChIJYYY", "action": "done"}
     )
     assert result["type"] == FlowResultType.CREATE_ENTRY
 
@@ -112,7 +107,7 @@ async def test_subentry_waypoint_incomplete_error(hass: HomeAssistant) -> None:
     result, flow_id = await _init_route_flow(hass, entry)
 
     result = await hass.config_entries.subentries.async_configure(
-        flow_id, {"label": "École", "place_id": ""}
+        flow_id, {"label": "École", "place_id": "", "action": "done"}
     )
     assert result["type"] == FlowResultType.FORM
     assert result["errors"] == {"base": "waypoint_incomplete"}

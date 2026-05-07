@@ -59,10 +59,21 @@ ROUTE_SCHEMA = vol.Schema(
     }
 )
 
+WAYPOINT_ACTION_OPTIONS = [
+    {"value": "add_another", "label": "Add another waypoint"},
+    {"value": "done", "label": "Done — create route"},
+]
+
 WAYPOINT_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_LABEL, default=""): str,
         vol.Optional(CONF_PLACE_ID, default=""): str,
+        vol.Required("action", default="add_another"): SelectSelector(
+            SelectSelectorConfig(
+                options=WAYPOINT_ACTION_OPTIONS,
+                mode=SelectSelectorMode.LIST,
+            )
+        ),
     }
 )
 
@@ -102,6 +113,7 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
         if user_input is not None:
             label = user_input.get(CONF_LABEL, "").strip()
             place_id = user_input.get(CONF_PLACE_ID, "").strip()
+            action = user_input.get("action", "done")
 
             if not label and not place_id:
                 return self.async_create_entry(
@@ -110,7 +122,12 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
                 )
             elif label and place_id:
                 self._waypoints.append({"label": label, "place_id": place_id})
-                return await self.async_step_add_waypoint()
+                if action == "add_another":
+                    return await self.async_step_add_waypoint()
+                return self.async_create_entry(
+                    title=self._route_data[CONF_NAME],
+                    data={**self._route_data, CONF_WAYPOINTS: self._waypoints},
+                )
             else:
                 errors["base"] = "waypoint_incomplete"
 
@@ -119,7 +136,7 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
             step_id="add_waypoint",
             data_schema=WAYPOINT_SCHEMA,
             description_placeholders={
-                "waypoints": added or "None yet — leave both fields empty to finish.",
+                "waypoints": added or "None yet.",
             },
             errors=errors,
         )
