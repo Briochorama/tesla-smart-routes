@@ -3,6 +3,14 @@ from __future__ import annotations
 import urllib.parse
 
 
+def waypoint_place_url(waypoint: dict) -> str:
+    return (
+        "https://www.google.com/maps/search/?api=1"
+        f"&query={urllib.parse.quote_plus(waypoint['label'])}"
+        f"&query_place_id={waypoint['place_id']}"
+    )
+
+
 def build_maps_url(waypoints: list[dict]) -> str | None:
     if not waypoints:
         return None

@@ -68,9 +68,23 @@
         },
         "add_single_waypoint": {
           "title": "Add waypoint",
+          "description": "Leave both fields empty and submit to go back without adding.",
           "data": {
             "label": "Label",
             "place_id": "Place ID"
+          }
+        },
+        "select_waypoint": {
+          "title": "Select waypoint",
+          "data": {
+            "waypoint_index": "Waypoint"
+          }
+        },
+        "manage_waypoint_action": {
+          "title": "What do you want to do?",
+          "description": "Selected waypoint: {label}",
+          "data": {
+            "waypoint_edit_action": "Action"
           }
         },
         "edit_waypoint": {
@@ -82,8 +96,7 @@
         }
       },
       "error": {
-        "waypoint_incomplete": "Both label and Place ID are required.",
-        "waypoint_not_selected": "Please select a waypoint from the list."
+        "waypoint_incomplete": "Both label and Place ID are required."
       },
       "abort": {
         "reconfigure_successful": "Route updated successfully."

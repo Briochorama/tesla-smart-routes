@@ -184,7 +184,9 @@ async def test_manage_waypoints_shows_existing(hass: HomeAssistant) -> None:
 
     result = await _enter_manage_waypoints(hass, entry, subentry)
     assert result["type"] == FlowResultType.FORM
-    assert "waypoint_index" in result["data_schema"].schema
+    assert result["step_id"] == "manage_waypoints"
+    # waypoint_index lives in select_waypoint now, not here
+    assert "waypoint_index" not in result["data_schema"].schema
 
 
 async def test_manage_waypoints_add_new(hass: HomeAssistant) -> None:
@@ -217,6 +219,20 @@ async def test_manage_waypoints_add_new(hass: HomeAssistant) -> None:
     assert subentry.data["waypoints"] == [{"label": "Stop A", "place_id": "ChIJAAA"}]
 
 
+async def _select_waypoint_and_action(hass, flow_id, index, action):
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id, {"waypoint_action": "edit_or_delete"}
+    )
+    assert result["step_id"] == "select_waypoint"
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id, {"waypoint_index": str(index)}
+    )
+    assert result["step_id"] == "manage_waypoint_action"
+    return await hass.config_entries.subentries.async_configure(
+        flow_id, {"waypoint_edit_action": action}
+    )
+
+
 async def test_manage_waypoints_delete(hass: HomeAssistant) -> None:
     entry = await _create_main_entry(hass)
     result, flow_id = await _init_route_flow(hass, entry)
@@ -228,12 +244,9 @@ async def test_manage_waypoints_delete(hass: HomeAssistant) -> None:
     )
     await hass.async_block_till_done()
     subentry = next(iter(entry.subentries.values()))
-    assert len(subentry.data["waypoints"]) == 2
 
     result = await _enter_manage_waypoints(hass, entry, subentry)
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"waypoint_action": "delete_selected", "waypoint_index": "0"}
-    )
+    result = await _select_waypoint_and_action(hass, result["flow_id"], 0, "delete")
     assert result["step_id"] == "manage_waypoints"
 
     result = await hass.config_entries.subentries.async_configure(
@@ -254,9 +267,7 @@ async def test_manage_waypoints_edit(hass: HomeAssistant) -> None:
     subentry = next(iter(entry.subentries.values()))
 
     result = await _enter_manage_waypoints(hass, entry, subentry)
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"waypoint_action": "edit_selected", "waypoint_index": "0"}
-    )
+    result = await _select_waypoint_and_action(hass, result["flow_id"], 0, "edit")
     assert result["step_id"] == "edit_waypoint"
 
     result = await hass.config_entries.subentries.async_configure(
@@ -269,20 +280,3 @@ async def test_manage_waypoints_edit(hass: HomeAssistant) -> None:
     )
     assert result["reason"] == "reconfigure_successful"
     assert subentry.data["waypoints"] == [{"label": "New label", "place_id": "ChIJNEW"}]
-
-
-async def test_manage_waypoints_error_no_selection(hass: HomeAssistant) -> None:
-    entry = await _create_main_entry(hass)
-    result, flow_id = await _init_route_flow(hass, entry)
-    await hass.config_entries.subentries.async_configure(
-        flow_id, {"label": "Stop A", "place_id": "ChIJAAA", "action": "done"}
-    )
-    await hass.async_block_till_done()
-    subentry = next(iter(entry.subentries.values()))
-
-    result = await _enter_manage_waypoints(hass, entry, subentry)
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"waypoint_action": "delete_selected"}
-    )
-    assert result["type"] == FlowResultType.FORM
-    assert result["errors"] == {"base": "waypoint_not_selected"}
