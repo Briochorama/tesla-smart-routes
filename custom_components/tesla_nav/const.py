@@ -2,7 +2,6 @@ DOMAIN = "tesla_nav"
 
 CONF_CLIENT_ID = "client_id"
 CONF_CLIENT_SECRET = "client_secret"
-CONF_REFRESH_TOKEN = "refresh_token"
 CONF_PROXY_URL = "proxy_url"
 
 CONF_NAME = "name"
@@ -20,3 +19,11 @@ DEFAULT_PROXY_URL = "https://localhost:4443"
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 SUBENTRY_TYPE_ROUTE = "route"
+
+OAUTH2_AUTHORIZE = "https://auth.tesla.com/oauth2/v3/authorize"
+OAUTH2_TOKEN = "https://auth.tesla.com/oauth2/v3/token"
+OAUTH2_SCOPES = "openid offline_access vehicle_cmds vehicle_device_data vehicle_location"
+
+FLEET_API_BASE = "https://fleet-api.prd.eu.vn.cloud.tesla.com"
+WAKE_POLL_INTERVAL = 2   # seconds between state polls
+WAKE_TIMEOUT = 60        # seconds before giving up

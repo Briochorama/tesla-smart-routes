@@ -2,11 +2,11 @@
   "config": {
     "step": {
       "user": {
-        "title": "Tesla Nav — Credentials",
+        "title": "Tesla Nav — Connect to Tesla",
+        "description": "Enter your Tesla developer app credentials. You will be redirected to Tesla to sign in.",
         "data": {
           "client_id": "Client ID",
           "client_secret": "Client Secret",
-          "refresh_token": "Refresh Token",
           "proxy_url": "Proxy URL"
         }
       }

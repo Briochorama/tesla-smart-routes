@@ -5,7 +5,7 @@
   "config_flow": true,
   "single_config_entry": true,
   "documentation": "",
-  "requirements": ["requests>=2.31.0"],
+  "requirements": [],
   "codeowners": [],
   "iot_class": "local_polling"
 }

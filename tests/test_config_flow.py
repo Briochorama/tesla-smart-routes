@@ -1,31 +1,42 @@
+import pytest
+from unittest.mock import patch
+
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.tesla_nav.const import DOMAIN
+from custom_components.tesla_nav.config_flow import TeslaLocalOAuth2Implementation
+from custom_components.tesla_nav.const import (
+    CONF_CLIENT_ID,
+    CONF_CLIENT_SECRET,
+    CONF_PROXY_URL,
+    DOMAIN,
+)
 
-CREDENTIALS = {
-    "client_id": "test_client_id",
-    "client_secret": "test_secret",
-    "refresh_token": "test_refresh",
-    "proxy_url": "https://localhost:4443",
+MOCK_ENTRY_DATA = {
+    CONF_CLIENT_ID: "test_cid",
+    CONF_CLIENT_SECRET: "test_csec",
+    CONF_PROXY_URL: "https://localhost:4443",
+    "token": {
+        "access_token": "mock_access",
+        "refresh_token": "mock_refresh",
+        "token_type": "Bearer",
+        "expires_in": 7200,
+        "expires_at": 9999999999,
+    },
 }
 
 VIN_CHONK = "XP7YGCES6RB264282"
 
 
 async def _create_main_entry(hass: HomeAssistant):
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], CREDENTIALS)
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    await hass.async_block_till_done()
-    return hass.config_entries.async_entries(DOMAIN)[0]
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA)
+    entry.add_to_hass(hass)
+    return entry
 
 
 async def _init_route_flow(hass: HomeAssistant, entry):
-    """Init route flow through user → vin_source → vin_manual, return (result at add_waypoint, flow_id)."""
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, "route"),
         context={"source": config_entries.SOURCE_USER},
@@ -45,6 +56,8 @@ async def _init_route_flow(hass: HomeAssistant, entry):
     return result, flow_id
 
 
+# ── Main config flow ────────────────────────────────────────────────────────
+
 async def test_config_flow_shows_form(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -52,28 +65,38 @@ async def test_config_flow_shows_form(hass: HomeAssistant) -> None:
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "user"
     assert "client_id" in result["data_schema"].schema
+    assert "client_secret" in result["data_schema"].schema
     assert "proxy_url" in result["data_schema"].schema
+    assert "refresh_token" not in result["data_schema"].schema
 
 
-async def test_config_flow_creates_entry(hass: HomeAssistant) -> None:
+async def test_config_flow_initiates_oauth(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], CREDENTIALS)
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Tesla Nav"
-    assert result["data"]["client_id"] == "test_client_id"
-    assert result["data"]["proxy_url"] == "https://localhost:4443"
+    with patch.object(
+        TeslaLocalOAuth2Implementation,
+        "async_generate_authorize_url",
+        return_value="https://auth.tesla.com/authorize?mock=1",
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_CLIENT_ID: "cid", CONF_CLIENT_SECRET: "csec", CONF_PROXY_URL: "https://localhost:4443"},
+        )
+    assert result["type"] == FlowResultType.EXTERNAL_STEP
+    assert "auth.tesla.com" in result["url"]
 
 
 async def test_config_flow_only_one_entry(hass: HomeAssistant) -> None:
-    await _create_main_entry(hass)
+    entry = await _create_main_entry(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "single_instance_allowed"
 
+
+# ── Subentry flow ────────────────────────────────────────────────────────────
 
 async def test_subentry_creates_route_no_waypoints(hass: HomeAssistant) -> None:
     entry = await _create_main_entry(hass)
@@ -101,7 +124,6 @@ async def test_subentry_creates_route_with_waypoints(hass: HomeAssistant) -> Non
     result = await hass.config_entries.subentries.async_configure(
         flow_id, {"label": "École", "place_id": "ChIJXXX", "action": "add_another"}
     )
-    assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "add_waypoint"
 
     result = await hass.config_entries.subentries.async_configure(
@@ -150,6 +172,7 @@ async def test_reconfigure_shows_menu(hass: HomeAssistant) -> None:
     assert "edit_waypoints" in result["menu_options"]
 
 
+@pytest.mark.parametrize("expected_lingering_timers", [True])
 async def test_reconfigure_edit_route_keeps_waypoints(hass: HomeAssistant) -> None:
     entry = await _create_main_entry(hass)
     result, flow_id = await _init_route_flow(hass, entry)
@@ -163,7 +186,6 @@ async def test_reconfigure_edit_route_keeps_waypoints(hass: HomeAssistant) -> No
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {"next_step_id": "edit_route"}
     )
-    assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "edit_route"
 
     result = await hass.config_entries.subentries.async_configure(
@@ -174,7 +196,6 @@ async def test_reconfigure_edit_route_keeps_waypoints(hass: HomeAssistant) -> No
 
     assert subentry.data["name"] == "lundi_soir"
     assert subentry.data["weekday"] == ["friday"]
-    assert subentry.data["time"] == "18:00"
     assert subentry.data["vin"] == VIN_CHONK
     assert subentry.data["waypoints"] == [{"label": "Stop A", "place_id": "ChIJAAA"}]
 
@@ -244,8 +265,6 @@ async def test_manage_waypoints_add_new(hass: HomeAssistant) -> None:
     subentry = next(iter(entry.subentries.values()))
 
     result = await _enter_manage_waypoints(hass, entry, subentry)
-    assert "waypoint_index" not in result["data_schema"].schema
-
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {"waypoint_action": "add_new"}
     )

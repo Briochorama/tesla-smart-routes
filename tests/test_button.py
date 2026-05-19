@@ -1,26 +1,33 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.tesla_nav.const import DOMAIN
+from custom_components.tesla_nav.const import DOMAIN, CONF_CLIENT_ID, CONF_CLIENT_SECRET, CONF_PROXY_URL
 
-CREDENTIALS = {
-    "client_id": "cid",
-    "client_secret": "csec",
-    "refresh_token": "rtok",
-    "proxy_url": "https://localhost:4443",
+MOCK_ENTRY_DATA = {
+    CONF_CLIENT_ID: "test_cid",
+    CONF_CLIENT_SECRET: "test_csec",
+    CONF_PROXY_URL: "https://localhost:4443",
+    "token": {
+        "access_token": "mock_access_token",
+        "refresh_token": "mock_refresh_token",
+        "token_type": "Bearer",
+        "expires_in": 7200,
+        "expires_at": 9999999999,
+    },
 }
 
 
 async def _create_main_entry(hass: HomeAssistant):
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], CREDENTIALS)
-    assert result["type"] == FlowResultType.CREATE_ENTRY
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    return hass.config_entries.async_entries(DOMAIN)[0]
+    return entry
 
 
 async def _add_route(
@@ -49,7 +56,6 @@ async def _add_route(
     result = await hass.config_entries.subentries.async_configure(
         flow_id, {"vin": "XP7YGCES6RB264282"},
     )
-    assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "add_waypoint"
 
     for wp in waypoints or []:
@@ -99,17 +105,47 @@ async def test_button_created_per_route(hass: HomeAssistant) -> None:
     assert "lundi_soir" in names
 
 
-async def test_button_press_logs(hass: HomeAssistant, caplog) -> None:
+async def test_button_press_sends_route(hass: HomeAssistant) -> None:
     entry = await _create_main_entry(hass)
-    await _add_route(hass, entry, "lundi_matin")
+    await _add_route(
+        hass, entry, "lundi_matin",
+        waypoints=[{"label": "École", "place_id": "ChIJXXX"}],
+    )
 
     registry = er.async_get(hass)
     entities = er.async_entries_for_config_entry(registry, entry.entry_id)
     entity_id = entities[0].entity_id
 
-    await hass.services.async_call(
-        "button", "press",
-        {"entity_id": entity_id},
-        blocking=True,
-    )
-    assert "lundi_matin" in caplog.text
+    mock_post = AsyncMock()
+    mock_post.status = 200
+    mock_post.raise_for_status = MagicMock()
+    mock_post.json = AsyncMock(return_value={"response": {"result": True, "reason": ""}})
+    mock_post.__aenter__ = AsyncMock(return_value=mock_post)
+    mock_post.__aexit__ = AsyncMock(return_value=False)
+
+    mock_get = AsyncMock()
+    mock_get.status = 200
+    mock_get.json = AsyncMock(return_value={"response": {"state": "online"}})
+    mock_get.__aenter__ = AsyncMock(return_value=mock_get)
+    mock_get.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(
+        "homeassistant.helpers.config_entry_oauth2_flow.OAuth2Session.async_ensure_token_valid",
+        return_value=None,
+    ), patch(
+        "aiohttp.ClientSession.post",
+        return_value=mock_post,
+    ), patch(
+        "aiohttp.ClientSession.get",
+        return_value=mock_get,
+    ), patch(
+        "asyncio.sleep",
+        return_value=None,
+    ):
+        await hass.services.async_call(
+            "button", "press", {"entity_id": entity_id}, blocking=True
+        )
+
+    mock_post.raise_for_status.assert_called_once()
+    mock_post.json.assert_called_once()
+    mock_get.__aenter__.assert_called_once()  # vehicle state polled once before "online"

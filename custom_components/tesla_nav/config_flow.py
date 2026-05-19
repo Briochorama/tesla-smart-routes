@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigSubentryFlow
 from homeassistant.core import callback
+from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.helpers.selector import (
     EntitySelector,
     SelectSelector,
@@ -20,7 +22,6 @@ from .const import (
     CONF_NAME,
     CONF_PLACE_ID,
     CONF_PROXY_URL,
-    CONF_REFRESH_TOKEN,
     CONF_TIME,
     CONF_VIN,
     CONF_VIN_ENTITY,
@@ -29,6 +30,9 @@ from .const import (
     CONF_WEEKDAY,
     DEFAULT_PROXY_URL,
     DOMAIN,
+    OAUTH2_AUTHORIZE,
+    OAUTH2_SCOPES,
+    OAUTH2_TOKEN,
     SUBENTRY_TYPE_ROUTE,
 )
 
@@ -36,10 +40,30 @@ USER_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_CLIENT_ID): str,
         vol.Required(CONF_CLIENT_SECRET): str,
-        vol.Required(CONF_REFRESH_TOKEN): str,
         vol.Optional(CONF_PROXY_URL, default=DEFAULT_PROXY_URL): str,
     }
 )
+
+
+class TeslaLocalOAuth2Implementation(config_entry_oauth2_flow.LocalOAuth2Implementation):
+    def __init__(self, hass, client_id: str, client_secret: str) -> None:
+        super().__init__(
+            hass=hass,
+            domain=DOMAIN,
+            client_id=client_id,
+            client_secret=client_secret,
+            authorize_url=OAUTH2_AUTHORIZE,
+            token_url=OAUTH2_TOKEN,
+        )
+
+    @property
+    def redirect_uri(self) -> str:
+        return "https://my.home-assistant.io/redirect/oauth"
+
+    @property
+    def extra_authorize_data(self) -> dict:
+        return {"scope": OAUTH2_SCOPES}
+
 
 WEEKDAY_OPTIONS = [
     {"value": "monday", "label": "Monday"},
@@ -127,17 +151,36 @@ WAYPOINT_EDIT_DELETE_OPTIONS = [
 ]
 
 
-class TeslaNavConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class TeslaNavConfigFlow(config_entry_oauth2_flow.AbstractOAuth2FlowHandler, domain=DOMAIN):
     VERSION = 1
+    DOMAIN = DOMAIN
+
+    _proxy_url: str | None = None
+
+    @property
+    def logger(self) -> logging.Logger:
+        return logging.getLogger(__name__)
 
     async def async_step_user(self, user_input=None):
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
 
         if user_input is not None:
-            return self.async_create_entry(title="Tesla Nav", data=user_input)
+            self._proxy_url = user_input[CONF_PROXY_URL]
+            self.flow_impl = TeslaLocalOAuth2Implementation(
+                self.hass,
+                user_input[CONF_CLIENT_ID],
+                user_input[CONF_CLIENT_SECRET],
+            )
+            return await self.async_step_auth()
 
         return self.async_show_form(step_id="user", data_schema=USER_SCHEMA)
+
+    async def async_oauth_create_entry(self, data: dict) -> dict:
+        data[CONF_PROXY_URL] = self._proxy_url
+        data[CONF_CLIENT_ID] = self.flow_impl.client_id
+        data[CONF_CLIENT_SECRET] = self.flow_impl.client_secret
+        return self.async_create_entry(title="Tesla Nav", data=data)
 
     @classmethod
     @callback

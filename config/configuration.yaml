@@ -4,9 +4,18 @@ default_config:
 # https://www.home-assistant.io/integrations/homeassistant/
 homeassistant:
   debug: true
+  external_url: "https://kick-exponent-junior.ngrok-free.dev"
 
 # https://www.home-assistant.io/integrations/logger/
 logger:
   default: info
   logs:
     custom_components.integration_blueprint: debug
+    homeassistant.helpers.config_entry_oauth2_flow: debug
+    custom_components.tesla_nav: debug
+
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 127.0.0.1
+    - ::1
