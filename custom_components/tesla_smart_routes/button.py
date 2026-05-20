@@ -6,10 +6,13 @@ import logging
 import aiohttp
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.config_entry_oauth2_flow import OAuth2Session
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+SIGNAL_NEW_ROUTE = f"tesla_smart_routes_new_route"
 
 from .const import (
     CONF_NAME,
@@ -41,15 +44,15 @@ async def async_setup_entry(
         if subentry.subentry_type == SUBENTRY_TYPE_ROUTE
     )
 
+    @callback
+    def _add_new_route(subentry_id: str) -> None:
+        subentry = entry.subentries.get(subentry_id)
+        if subentry and subentry.subentry_type == SUBENTRY_TYPE_ROUTE:
+            async_add_entities([TeslaRouteButton(entry, subentry)])
 
-async def async_setup_subentry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    subentry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    if subentry.subentry_type == SUBENTRY_TYPE_ROUTE:
-        async_add_entities([TeslaRouteButton(entry, subentry)])
+    entry.async_on_unload(
+        async_dispatcher_connect(hass, f"{SIGNAL_NEW_ROUTE}_{entry.entry_id}", _add_new_route)
+    )
 
 
 class TeslaRouteButton(ButtonEntity):

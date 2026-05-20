@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigSubentryFlow
 from homeassistant.core import callback
 from homeassistant.helpers import config_entry_oauth2_flow
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.selector import (
     EntitySelector,
     SelectSelector,
@@ -234,12 +236,29 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
         )
 
     def _finish_waypoints(self):
+        from .button import SIGNAL_NEW_ROUTE
         title = self._route_data[CONF_NAME]
         data = {**self._route_data, CONF_WAYPOINTS: self._waypoints}
         if self._is_reconfigure:
             entry = self._get_entry()
             subentry = self._get_reconfigure_subentry()
             return self.async_update_reload_and_abort(entry, subentry, title=title, data=data)
+
+        entry = self._get_entry()
+        existing_ids = set(entry.subentries.keys())
+
+        async def _notify():
+            await asyncio.sleep(0)
+            for sub_id, sub in entry.subentries.items():
+                if sub_id not in existing_ids:
+                    async_dispatcher_send(
+                        self.hass,
+                        f"{SIGNAL_NEW_ROUTE}_{entry.entry_id}",
+                        sub_id,
+                    )
+                    break
+
+        self.hass.async_create_task(_notify())
         return self.async_create_entry(title=title, data=data)
 
     async def async_step_add_waypoint(self, user_input=None):
