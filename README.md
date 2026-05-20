@@ -98,7 +98,7 @@ Copy the `custom_components/tesla_smart_routes/` folder into your HA `config/cus
 
 ## Adding routes
 
-After setup, click **Add entry** next to the Tesla Smart Routes integration:
+After setup, click **Add Route** next to the Tesla Smart Routes integration:
 
 1. **Route name**: e.g. `school_morning`
 2. **Vehicle**: enter the VIN manually, or select a HA entity whose state is the VIN
@@ -121,7 +121,7 @@ Place IDs look like `ChIJN1t_tDeuEmsRUsoyG83frY4`.
 
 ## Editing routes
 
-Click the **pencil icon** on any route entry:
+Click the **cog icon** on any route entry:
 
 - **Edit route name**: rename the route
 - **Edit vehicle**: change VIN or switch to entity-based VIN
