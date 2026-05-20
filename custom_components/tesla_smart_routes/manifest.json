@@ -1,0 +1,11 @@
+{
+  "domain": "tesla_smart_routes",
+  "name": "Tesla Smart Routes",
+  "version": "0.1.0",
+  "config_flow": true,
+  "single_config_entry": true,
+  "documentation": "https://github.com/Briochorama/tesla-smart-routes",
+  "requirements": [],
+  "codeowners": ["@Briochorama"],
+  "iot_class": "local_polling"
+}
