@@ -38,6 +38,7 @@ Before installing the integration you need:
 ### 1. A Tesla Developer App
 - Go to [developer.tesla.com](https://developer.tesla.com), sign in, and create an application
 - Note the **Client ID** and **Client Secret**
+- Under **Allowed origins**, set the domain where your public key is hosted (e.g. `https://yourusername.github.io`) — this must match the domain registered with Tesla for your key pair
 - Under **Allowed redirect URIs**, add exactly: `https://my.home-assistant.io/redirect/oauth`
 - Required scopes: `openid offline_access vehicle_cmds vehicle_location vehicle_device_data`
 
