@@ -31,14 +31,34 @@ flowchart LR
 
 ---
 
+## Setup overview
+
+The full setup spans both this integration and the **[Tesla Smart Routes Add-on](https://github.com/Briochorama/tesla-smart-routes-addon)**. Follow this order:
+
+| Step | What | Where |
+|------|------|-------|
+| 1 | Generate EC key pair | [Add-on README - Step 2](https://github.com/Briochorama/tesla-smart-routes-addon#step-2-generate-your-tesla-key-pair) |
+| 2 | Host public key on GitHub Pages | [Add-on README - Step 3](https://github.com/Briochorama/tesla-smart-routes-addon#step-3-host-the-public-key) |
+| 3 | Register domain with Tesla | [Add-on README - Step 4](https://github.com/Briochorama/tesla-smart-routes-addon#step-4-register-your-domain-with-tesla) |
+| 4 | Create Tesla Developer App | This page (you now know your domain) |
+| 5 | Install add-on + copy private.pem | [Add-on README - Steps 1, 5](https://github.com/Briochorama/tesla-smart-routes-addon#step-1-add-custom-repository) |
+| 6 | Pair vehicle with key | [Add-on README - Step 6](https://github.com/Briochorama/tesla-smart-routes-addon#step-6-pair-the-key-with-your-vehicle) |
+| 7 | Start add-on | [Add-on README - Step 7](https://github.com/Briochorama/tesla-smart-routes-addon#step-7-start-the-add-on) |
+| 8 | Install + configure this integration | This page |
+
+**Start with the [add-on README](https://github.com/Briochorama/tesla-smart-routes-addon) (Steps 1-3).** Come back here for Step 4 once you have your GitHub Pages domain.
+
+---
+
 ## Prerequisites
 
-Before installing the integration you need:
-
 ### 1. A Tesla Developer App
+
+> Complete [add-on README Steps 2-3](https://github.com/Briochorama/tesla-smart-routes-addon#step-2-generate-your-tesla-key-pair) first. You need the GitHub Pages domain from Step 3 before filling out this form.
+
 - Go to [developer.tesla.com](https://developer.tesla.com), sign in, and create an application
 - Note the **Client ID** and **Client Secret**
-- Under **Allowed origins**, set the domain where your public key is hosted (e.g. `https://yourusername.github.io`) — this must match the domain registered with Tesla for your key pair
+- Under **Allowed origins**, set your GitHub Pages domain (e.g. `https://yourusername.github.io`) — this is the domain from add-on Step 3
 - Under **Allowed redirect URIs**, add exactly: `https://my.home-assistant.io/redirect/oauth`
 - Required scopes: `openid offline_access vehicle_cmds vehicle_location vehicle_device_data`
 
