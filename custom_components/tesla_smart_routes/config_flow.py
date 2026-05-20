@@ -240,9 +240,6 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
             entry = self._get_entry()
             subentry = self._get_reconfigure_subentry()
             return self.async_update_reload_and_abort(entry, subentry, title=title, data=data)
-        # Reload parent entry so the new button entity appears without manual reload
-        entry_id = self._get_entry().entry_id
-        self.hass.async_create_task(self.hass.config_entries.async_reload(entry_id))
         return self.async_create_entry(title=title, data=data)
 
     async def async_step_add_waypoint(self, user_input=None):
