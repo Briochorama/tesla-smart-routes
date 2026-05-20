@@ -42,6 +42,16 @@ async def async_setup_entry(
     )
 
 
+async def async_setup_subentry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    subentry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    if subentry.subentry_type == SUBENTRY_TYPE_ROUTE:
+        async_add_entities([TeslaRouteButton(entry, subentry)])
+
+
 class TeslaRouteButton(ButtonEntity):
     def __init__(self, entry: ConfigEntry, subentry) -> None:
         self._entry = entry
