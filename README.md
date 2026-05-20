@@ -33,20 +33,15 @@ flowchart LR
 
 ## Setup overview
 
-The full setup spans both this integration and the **[Tesla Smart Routes Add-on](https://github.com/Briochorama/tesla-smart-routes-addon)**. Follow this order:
+The full setup spans this integration and the **[Tesla Smart Routes Add-on](https://github.com/Briochorama/tesla-smart-routes-addon)**. Follow this order — do not skip ahead:
 
-| Step | What | Where |
-|------|------|-------|
-| 1 | Generate EC key pair | [Add-on README - Step 2](https://github.com/Briochorama/tesla-smart-routes-addon#step-2-generate-your-tesla-key-pair) |
-| 2 | Host public key on GitHub Pages | [Add-on README - Step 3](https://github.com/Briochorama/tesla-smart-routes-addon#step-3-host-the-public-key) |
-| 3 | Register domain with Tesla | [Add-on README - Step 4](https://github.com/Briochorama/tesla-smart-routes-addon#step-4-register-your-domain-with-tesla) |
-| 4 | Create Tesla Developer App | This page (you now know your domain) |
-| 5 | Install add-on + copy private.pem | [Add-on README - Steps 1, 5](https://github.com/Briochorama/tesla-smart-routes-addon#step-1-add-custom-repository) |
-| 6 | Pair vehicle with key | [Add-on README - Step 6](https://github.com/Briochorama/tesla-smart-routes-addon#step-6-pair-the-key-with-your-vehicle) |
-| 7 | Start add-on | [Add-on README - Step 7](https://github.com/Briochorama/tesla-smart-routes-addon#step-7-start-the-add-on) |
-| 8 | Install + configure this integration | This page |
-
-**Start with the [add-on README](https://github.com/Briochorama/tesla-smart-routes-addon) (Steps 1-3).** Come back here for Step 4 once you have your GitHub Pages domain.
+1. [Generate your EC key pair](https://github.com/Briochorama/tesla-smart-routes-addon#step-2-generate-your-tesla-key-pair)
+2. [Host the public key on GitHub Pages](https://github.com/Briochorama/tesla-smart-routes-addon#step-3-host-the-public-key) — this gives you your domain (e.g. `yourusername.github.io`)
+3. **Create your Tesla Developer App** — you need the domain from step 2 (see Prerequisites below)
+4. [Install the add-on and copy `private.pem` to HA](https://github.com/Briochorama/tesla-smart-routes-addon#step-1-add-custom-repository)
+5. [Pair each vehicle with your key](https://github.com/Briochorama/tesla-smart-routes-addon#step-6-pair-the-key-with-your-vehicle)
+6. [Start the add-on](https://github.com/Briochorama/tesla-smart-routes-addon#step-7-start-the-add-on)
+7. **Install and configure this integration** (see below)
 
 ---
 
