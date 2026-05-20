@@ -57,7 +57,7 @@ The full setup spans this integration and the **[Tesla Smart Routes Add-on](http
 - Note the **Client ID** and **Client Secret**
 - Under **Allowed origins**, set your GitHub Pages domain (e.g. `https://yourusername.github.io`) — this is the domain from add-on Step 3
 - Under **Allowed redirect URIs**, add exactly: `https://my.home-assistant.io/redirect/oauth`
-- Required scopes: `openid offline_access vehicle_cmds vehicle_location vehicle_device_data`
+- Under **Allowed callback URLs**, add exactly: `https://my.home-assistant.io/redirect/oauth`
 
 ### 2. The Tesla Smart Routes Add-on
 The integration sends commands through a local proxy that cryptographically signs them. Tesla requires this for all vehicle commands since 2023.
@@ -68,7 +68,7 @@ Install and configure the **[Tesla Smart Routes Add-on](https://github.com/Brioc
 
 ## Installation
 
-### HACS (recommended)
+### HACS (not available at this time)
 
 1. Open HACS, go to Integrations, click the three-dot menu and select **Custom repositories**
 2. Add `https://github.com/Briochorama/tesla-smart-routes`, category: **Integration**
