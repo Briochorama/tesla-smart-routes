@@ -11,7 +11,6 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
-    TimeSelector,
 )
 
 from .helpers import build_maps_url, waypoint_place_url
@@ -22,12 +21,10 @@ from .const import (
     CONF_NAME,
     CONF_PLACE_ID,
     CONF_PROXY_URL,
-    CONF_TIME,
     CONF_VIN,
     CONF_VIN_ENTITY,
     CONF_VIN_SOURCE,
     CONF_WAYPOINTS,
-    CONF_WEEKDAY,
     DEFAULT_PROXY_URL,
     DOMAIN,
     OAUTH2_AUTHORIZE,
@@ -65,29 +62,7 @@ class TeslaLocalOAuth2Implementation(config_entry_oauth2_flow.LocalOAuth2Impleme
         return {"scope": OAUTH2_SCOPES}
 
 
-WEEKDAY_OPTIONS = [
-    {"value": "monday", "label": "Monday"},
-    {"value": "tuesday", "label": "Tuesday"},
-    {"value": "wednesday", "label": "Wednesday"},
-    {"value": "thursday", "label": "Thursday"},
-    {"value": "friday", "label": "Friday"},
-    {"value": "saturday", "label": "Saturday"},
-    {"value": "sunday", "label": "Sunday"},
-]
-
-ROUTE_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_NAME): str,
-        vol.Required(CONF_WEEKDAY): SelectSelector(
-            SelectSelectorConfig(
-                options=WEEKDAY_OPTIONS,
-                multiple=True,
-                mode=SelectSelectorMode.LIST,
-            )
-        ),
-        vol.Required(CONF_TIME): TimeSelector(),
-    }
-)
+ROUTE_SCHEMA = vol.Schema({vol.Required(CONF_NAME): str})
 
 VIN_SOURCE_OPTIONS = [
     {"value": "manual", "label": "Manual VIN"},
@@ -265,6 +240,9 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
             entry = self._get_entry()
             subentry = self._get_reconfigure_subentry()
             return self.async_update_reload_and_abort(entry, subentry, title=title, data=data)
+        # Reload parent entry so the new button entity appears without manual reload
+        entry_id = self._get_entry().entry_id
+        self.hass.async_create_task(self.hass.config_entries.async_reload(entry_id))
         return self.async_create_entry(title=title, data=data)
 
     async def async_step_add_waypoint(self, user_input=None):
@@ -323,8 +301,6 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
         subentry = self._get_reconfigure_subentry()
         self._route_data = {
             CONF_NAME: subentry.data[CONF_NAME],
-            CONF_WEEKDAY: subentry.data[CONF_WEEKDAY],
-            CONF_TIME: subentry.data[CONF_TIME],
             CONF_VIN_SOURCE: subentry.data.get(CONF_VIN_SOURCE, "manual"),
         }
         if CONF_VIN in subentry.data:
@@ -337,8 +313,6 @@ class TeslaNavRouteSubentryFlow(ConfigSubentryFlow):
         subentry = self._get_reconfigure_subentry()
         self._route_data = {
             CONF_NAME: subentry.data[CONF_NAME],
-            CONF_WEEKDAY: subentry.data[CONF_WEEKDAY],
-            CONF_TIME: subentry.data[CONF_TIME],
             CONF_VIN_SOURCE: subentry.data.get(CONF_VIN_SOURCE, "manual"),
         }
         if CONF_VIN in subentry.data:

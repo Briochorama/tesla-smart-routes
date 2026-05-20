@@ -1,46 +1,68 @@
-# Notice
+# Tesla Smart Routes
 
-The component and platforms in this repository are not meant to be used by a
-user, but as a "blueprint" that custom component developers can build
-upon, to make more awesome stuff.
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 
-HAVE FUN! 😎
+Send saved waypoint routes to your Tesla vehicle directly from Home Assistant.
 
-## Why?
+## What it does
 
-This is simple, by having custom_components look (README + structure) the same
-it is easier for developers to help each other and for users to start using them.
+- Stores named routes with a list of Google Maps Place IDs as waypoints
+- Creates one **button** entity per route — press it to send the route to your Tesla
+- Wakes the vehicle automatically if it's asleep (up to 120 s timeout with retries)
+- Authenticates via Tesla's official OAuth 2 Fleet API
 
-If you are a developer and you want to add things to this "blueprint" that you think more
-developers will have use for, please open a PR to add it :)
+## Requirements
 
-## What?
+- Tesla Developer App (client ID + client secret)
+- [Tesla Smart Routes Add-on](https://github.com/Briochorama/tesla-smart-routes-addon) — the VCP proxy that signs navigation commands
+- Home Assistant 2026.3+
 
-This repository contains multiple files, here is a overview:
+## Installation
 
-File | Purpose | Documentation
--- | -- | --
-`.devcontainer.json` | Used for development/testing with Visual Studio Code. | [Documentation](https://code.visualstudio.com/docs/remote/containers)
-`.github/ISSUE_TEMPLATE/*.yml` | Templates for the issue tracker | [Documentation](https://help.github.com/en/github/building-a-strong-community/configuring-issue-templates-for-your-repository)
-`custom_components/integration_blueprint/*` | Integration files, this is where everything happens. | [Documentation](https://developers.home-assistant.io/docs/creating_component_index)
-`CONTRIBUTING.md` | Guidelines on how to contribute. | [Documentation](https://help.github.com/en/github/building-a-strong-community/setting-guidelines-for-repository-contributors)
-`LICENSE` | The license file for the project. | [Documentation](https://help.github.com/en/github/creating-cloning-and-archiving-repositories/licensing-a-repository)
-`README.md` | The file you are reading now, should contain info about the integration, installation and configuration instructions. | [Documentation](https://help.github.com/en/github/writing-on-github/basic-writing-and-formatting-syntax)
-`requirements.txt` | Python packages used for development/lint/testing this integration. | [Documentation](https://pip.pypa.io/en/stable/user_guide/#requirements-files)
+### HACS (recommended)
 
-## How?
+1. HACS → Integrations → ⋮ → **Custom repositories**
+2. Add `https://github.com/Briochorama/tesla-smart-routes` (category: **Integration**)
+3. Install **Tesla Smart Routes** and restart Home Assistant
 
-1. Create a new repository in GitHub, using this repository as a template by clicking the "Use this template" button in the GitHub UI.
-1. Open your new repository in Visual Studio Code devcontainer (Preferably with the "`Dev Containers: Clone Repository in Named Container Volume...`" option).
-1. Rename all instances of the `integration_blueprint` to `custom_components/<your_integration_domain>` (e.g. `custom_components/awesome_integration`).
-1. Rename all instances of the `Integration Blueprint` to `<Your Integration Name>` (e.g. `Awesome Integration`).
-1. Run the `scripts/develop` to start HA and test out your new integration.
+### Manual
 
-## Next steps
+Copy `custom_components/tesla_nav/` to your `config/custom_components/` folder and restart HA.
 
-These are some next steps you may want to look into:
-- Add tests to your integration, [`pytest-homeassistant-custom-component`](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component) can help you get started.
-- Add brand images (logo/icon).
-- Create your first release.
-- Share your integration on the [Home Assistant Forum](https://community.home-assistant.io/).
-- Submit your integration to [HACS](https://hacs.xyz/docs/publish/start).
+## Setup
+
+1. Install and start the **Tesla Smart Routes Add-on** first (see companion repo)
+2. **Settings → Devices & Services → Add Integration → Tesla Smart Routes**
+3. Enter your Tesla Developer App credentials and proxy URL (`https://localhost:4443` by default)
+4. Complete the OAuth 2 flow
+
+## Adding routes
+
+After setup, click **Add entry** next to the integration:
+
+1. Enter a route name
+2. Select your vehicle (manual VIN or HA entity whose state is the VIN)
+3. Add waypoints — each waypoint needs a **label** and a **Google Maps Place ID**
+4. A **button** entity appears — press it to load the route on your Tesla
+
+### Finding Place IDs
+
+Open Google Maps, right-click a location → the first line in the popup is the coordinates / Place ID. You can also use the [Place ID Finder](https://developers.google.com/maps/documentation/places/web-service/place-id).
+
+## Scheduling
+
+Use **Home Assistant automations** or **blueprints** to trigger the button at specific times or on specific days. No schedule is embedded in the integration.
+
+## Notes
+
+- The proxy uses a self-signed TLS certificate — this is expected; the integration sets `ssl=False` when talking to the local proxy
+- Waypoint strings sent to Tesla use the format `refId:<place_id>`
+- Changing a route (name, vehicle, waypoints) requires a reload of the integration to reflect in entity names
+
+## Contributing
+
+Issues and pull requests welcome.
+
+## License
+
+MIT © 2025 Basile Leyraud

@@ -14,16 +14,15 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import (
     CONF_NAME,
     CONF_PROXY_URL,
-    CONF_TIME,
     CONF_VIN,
     CONF_VIN_ENTITY,
     CONF_VIN_SOURCE,
     CONF_WAYPOINTS,
-    CONF_WEEKDAY,
     DOMAIN,
     FLEET_API_BASE,
     SUBENTRY_TYPE_ROUTE,
     WAKE_POLL_INTERVAL,
+    WAKE_RETRY_INTERVAL,
     WAKE_TIMEOUT,
 )
 from .helpers import build_maps_url
@@ -60,8 +59,6 @@ class TeslaRouteButton(ButtonEntity):
             else self._subentry.data.get(CONF_VIN)
         )
         return {
-            "weekdays": self._subentry.data[CONF_WEEKDAY],
-            "time": self._subentry.data[CONF_TIME],
             "vin_source": vin_source,
             "vin": vin,
             "waypoints_count": len(waypoints),
@@ -70,20 +67,43 @@ class TeslaRouteButton(ButtonEntity):
 
     async def _wake_vehicle(self, vin: str, headers: dict) -> bool:
         http_session = async_get_clientsession(self.hass)
-        try:
-            async with http_session.post(
-                f"{FLEET_API_BASE}/api/1/vehicles/{vin}/wake_up",
-                headers=headers,
-            ) as resp:
-                _LOGGER.debug("[tesla_nav] wake_up response: %s", resp.status)
-        except aiohttp.ClientError as err:
-            _LOGGER.error("[tesla_nav] wake_up failed: %s", err)
-            return False
 
+        async def _send_wake() -> str | None:
+            """Send wake_up. Returns 'online', 'waking', or None (offline/error)."""
+            try:
+                async with http_session.post(
+                    f"{FLEET_API_BASE}/api/1/vehicles/{vin}/wake_up",
+                    headers=headers,
+                ) as resp:
+                    if resp.status == 408:
+                        _LOGGER.error("[tesla_nav] %s is offline (no cellular) — cannot wake", vin)
+                        return None
+                    if resp.status == 200:
+                        data = await resp.json()
+                        return data.get("response", {}).get("state", "waking")
+            except aiohttp.ClientError as err:
+                _LOGGER.error("[tesla_nav] wake_up request failed: %s", err)
+            return None
+
+        state = await _send_wake()
+        if state is None:
+            return False
+        if state == "online":
+            _LOGGER.info("[tesla_nav] %s already online", vin)
+            return True
+
+        _LOGGER.info("[tesla_nav] Waking %s (state: %s)...", vin, state)
         elapsed = 0
+        next_retry = WAKE_RETRY_INTERVAL
         while elapsed < WAKE_TIMEOUT:
             await asyncio.sleep(WAKE_POLL_INTERVAL)
             elapsed += WAKE_POLL_INTERVAL
+
+            if elapsed >= next_retry:
+                _LOGGER.debug("[tesla_nav] Re-sending wake_up to %s", vin)
+                await _send_wake()
+                next_retry += WAKE_RETRY_INTERVAL
+
             try:
                 async with http_session.get(
                     f"{FLEET_API_BASE}/api/1/vehicles/{vin}",
@@ -92,7 +112,7 @@ class TeslaRouteButton(ButtonEntity):
                     if resp.status == 200:
                         data = await resp.json()
                         state = data.get("response", {}).get("state")
-                        _LOGGER.debug("[tesla_nav] %s state: %s (%ds)", vin, state, elapsed)
+                        _LOGGER.info("[tesla_nav] %s state: %s (%ds)", vin, state, elapsed)
                         if state == "online":
                             return True
             except aiohttp.ClientError:
@@ -121,9 +141,7 @@ class TeslaRouteButton(ButtonEntity):
         await oauth_session.async_ensure_token_valid()
         access_token = oauth_session.token["access_token"]
 
-        # Wake vehicle if needed
         headers = {"Authorization": f"Bearer {access_token}"}
-        _LOGGER.info("[tesla_nav] Waking %s...", vin)
         if not await self._wake_vehicle(vin, headers):
             _LOGGER.error("[tesla_nav] Aborting route '%s' — vehicle offline", name)
             return

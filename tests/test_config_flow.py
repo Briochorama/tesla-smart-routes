@@ -43,7 +43,7 @@ async def _init_route_flow(hass: HomeAssistant, entry):
     )
     flow_id = result["flow_id"]
     result = await hass.config_entries.subentries.async_configure(
-        flow_id, {"name": "lundi_matin", "weekday": ["monday"], "time": "07:30"},
+        flow_id, {"name": "lundi_matin"},
     )
     assert result["step_id"] == "vin_source"
     result = await hass.config_entries.subentries.async_configure(
@@ -189,13 +189,12 @@ async def test_reconfigure_edit_route_keeps_waypoints(hass: HomeAssistant) -> No
     assert result["step_id"] == "edit_route"
 
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"name": "lundi_soir", "weekday": ["friday"], "time": "18:00"}
+        result["flow_id"], {"name": "lundi_soir"}
     )
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
 
     assert subentry.data["name"] == "lundi_soir"
-    assert subentry.data["weekday"] == ["friday"]
     assert subentry.data["vin"] == VIN_CHONK
     assert subentry.data["waypoints"] == [{"label": "Stop A", "place_id": "ChIJAAA"}]
 

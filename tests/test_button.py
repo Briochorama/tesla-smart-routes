@@ -34,19 +34,15 @@ async def _add_route(
     hass: HomeAssistant,
     entry,
     name: str,
-    weekday: list | None = None,
-    time: str = "07:30",
     waypoints: list | None = None,
 ):
-    if weekday is None:
-        weekday = ["monday"]
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, "route"),
         context={"source": config_entries.SOURCE_USER},
     )
     flow_id = result["flow_id"]
     result = await hass.config_entries.subentries.async_configure(
-        flow_id, {"name": name, "weekday": weekday, "time": time},
+        flow_id, {"name": name},
     )
     assert result["step_id"] == "vin_source"
     result = await hass.config_entries.subentries.async_configure(
@@ -68,8 +64,6 @@ async def _add_route(
         flow_id, {"label": "", "place_id": "", "action": "done"}
     )
     assert result["type"] == FlowResultType.CREATE_ENTRY
-    await hass.async_block_till_done()
-    await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
 
 
@@ -95,7 +89,7 @@ async def test_button_appears_after_subentry_added(hass: HomeAssistant) -> None:
 async def test_button_created_per_route(hass: HomeAssistant) -> None:
     entry = await _create_main_entry(hass)
     await _add_route(hass, entry, "lundi_matin")
-    await _add_route(hass, entry, "lundi_soir", time="16:00")
+    await _add_route(hass, entry, "lundi_soir")
 
     registry = er.async_get(hass)
     entities = er.async_entries_for_config_entry(registry, entry.entry_id)
