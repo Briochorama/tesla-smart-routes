@@ -5,7 +5,9 @@
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.3%2B-blue?style=flat-square)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/github/license/Briochorama/tesla-smart-routes?style=flat-square)](LICENSE)
 
-Send saved multi-stop waypoint routes to your Tesla from Home Assistant. One button press loads the full route on your car's navigation screen.
+Monday morning. Drop the kids at school, stop at the bakery, then head to the office. Every day the same trip, every day the same tapping on the Tesla screen.
+
+Tesla Smart Routes lets you save those trips once. When you get in the car, press a button in Home Assistant — or let an automation do it for you — and the full multi-stop route appears on your navigation screen instantly. No typing, no searching, no fiddling with the touchscreen while the kids are yelling.
 
 ---
 
