@@ -87,6 +87,7 @@ class TeslaRouteButton(ButtonEntity):
                 async with http_session.post(
                     f"{FLEET_API_BASE}/api/1/vehicles/{vin}/wake_up",
                     headers=headers,
+                    json={},
                 ) as resp:
                     if resp.status == 408:
                         _LOGGER.error("[tesla_smart_routes] %s is offline (no cellular) — cannot wake", vin)
@@ -94,6 +95,12 @@ class TeslaRouteButton(ButtonEntity):
                     if resp.status == 200:
                         data = await resp.json()
                         return data.get("response", {}).get("state", "waking")
+                    body = await resp.text()
+                    _LOGGER.error(
+                        "[tesla_smart_routes] wake_up %s → HTTP %s: %s",
+                        vin, resp.status, body[:200],
+                    )
+                    return None
             except aiohttp.ClientError as err:
                 _LOGGER.error("[tesla_smart_routes] wake_up request failed: %s", err)
             return None
